@@ -1,6 +1,6 @@
 # Anime Backend
 
-Mini backend Node.js com Express para fazer webscraping de players de anime.
+Mini backend Node.js com Express para busca de animes (Jikan API) e webscraping de players.
 
 ## Instalação
 
@@ -23,14 +23,63 @@ Servidor roda em `http://localhost:3001`.
 ### GET `/api/health`
 Verifica se o servidor está rodando.
 
+### GET `/api/anime/search?q=<query>`
+Busca animes usando a Jikan API (MyAnimeList).
+
+**Exemplo:** `curl "http://localhost:3001/api/anime/search?q=naruto"`
+
+**Resposta:**
+```json
+{
+  "results": [
+    {
+      "mal_id": 20,
+      "title": "Naruto",
+      "title_english": "Naruto",
+      "images": { "jpg": { "image_url": "..." } },
+      "synopsis": "...",
+      "episodes": 220,
+      "status": "Finished Airing",
+      "score": 7.9,
+      "year": 2002,
+      "genres": ["Action", "Comedy"]
+    }
+  ]
+}
+```
+
+### POST `/api/provider/search`
+Pesquisa um anime diretamente nos providers (scraping).
+
+**Body:**
+```json
+{
+  "title": "jujutsu kaisen",
+  "provider": "Animes Online"
+}
+```
+
+**Resposta:**
+```json
+{
+  "results": [
+    {
+      "title": "Jujutsu Kaisen",
+      "url": "https://animesonlinecc.to/anime/jujutsu-kaisen",
+      "image": "https://..."
+    }
+  ]
+}
+```
+
 ### POST `/api/scrape`
-Faz o scraping de uma página de episódio de anime.
+Faz o scraping de uma página de episódio de anime para capturar o player.
 
 **Body:**
 ```json
 {
   "url": "https://animesonlinecc.to/episodio/naruto-1",
-  "provider": "Animes Online"  // opcional
+  "provider": "Animes Online"
 }
 ```
 
@@ -45,18 +94,31 @@ Faz o scraping de uma página de episódio de anime.
 
 ## Configuração
 
-Edite `providers.js` para adicionar novos sites de anime. Cada provider deve ter:
+Edite `providers.js` para adicionar novos sites. Cada provider tem:
 - `name`: Nome identificador
 - `url`: URL base do site
-- `selectors`: Array de seletores CSS para encontrar o vídeo/iframe
-- `clickSelectors`: Array de seletores para clicar (botão play, etc)
+- `selectors`: Seletores CSS para encontrar vídeo/iframe
+- `clickSelectors`: Seletores para clicar (botão play)
+- `getSearchUrl(title)`: Método que gera URL de busca no provider
 
 ## Como funciona
 
+### Busca Jikan
+1. Recebe query de busca
+2. Faz requisição para Jikan API com rate limiting
+3. Retorna lista de animes do MyAnimeList
+
+### Busca no Provider
+1. Recebe título e provider
+2. Constrói URL de busca específica do provider
+3. Abre browser headless (Puppeteer)
+4. Extrai resultados da página de busca
+5. Retorna títulos e links encontrados
+
+### Scraping de Vídeo
 1. Recebe URL do episódio
-2. Abre um browser headless (Puppeteer)
-3. Carrega a página
-4. Tenta encontrar o vídeo/iframe usando os seletores definidos
-5. Se não encontrar, tenta clicar no botão play
-6. Captura a URL do vídeo/iframe
-7. Retorna a URL para o frontend
+2. Abre browser headless
+3. Tenta encontrar vídeo/iframe via seletores
+4. Se não achar, clica no botão play
+5. Captura URL do player
+6. Retorna URL do vídeo

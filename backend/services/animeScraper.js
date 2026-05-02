@@ -88,6 +88,97 @@ class AnimeScraper {
 
     return provider?.selectors || defaultSelectors;
   }
+
+  async searchAnimeOnProvider(title, providerName) {
+    let browser;
+    try {
+      const provider = providers.find(p => p.name === providerName);
+      if (!provider) {
+        throw new Error(`Provider ${providerName} not found`);
+      }
+
+      const searchUrl = provider.getSearchUrl(title);
+
+      browser = await puppeteer.launch({
+        headless: 'new',
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+      });
+
+      const page = await browser.newPage();
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+
+      await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+
+      const results = await page.evaluate((selector) => {
+        const items = [];
+        const links = Array.from(document.querySelectorAll(selector));
+
+        for (const link of links) {
+          const title = link.textContent.trim();
+          const url = link.href;
+          const image = link.querySelector('img')?.src || null;
+
+          if (title && url && url.includes('http')) {
+            items.push({ title, url, image });
+          }
+        }
+
+        return items;
+      }, provider.resultSelector);
+
+      return results.slice(0, 10);
+    } catch (error) {
+      throw new Error(`Provider search failed: ${error.message}`);
+    } finally {
+      if (browser) await browser.close();
+    }
+  }
+
+  async scrapeEpisodeList(animePageUrl, provider) {
+    let browser;
+    try {
+      const providerObj = typeof provider === 'string'
+        ? providers.find(p => p.name === provider)
+        : provider;
+
+      if (!providerObj?.episodeSelector) return [];
+
+      browser = await puppeteer.launch({
+        headless: 'new',
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+      });
+
+      const page = await browser.newPage();
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+
+      await page.goto(animePageUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+
+      const episodes = await page.evaluate((selector) => {
+        const items = [];
+        const links = Array.from(document.querySelectorAll(selector));
+
+        for (const link of links) {
+          const episodeText = link.textContent.trim();
+          const url = link.href;
+
+          const match = episodeText.match(/(\d+)/);
+          const episodeNumber = match ? parseInt(match[1]) : items.length + 1;
+
+          if (url && url.includes('http')) {
+            items.push({ episodeNumber, url, title: episodeText });
+          }
+        }
+
+        return items;
+      }, providerObj.episodeSelector);
+
+      return episodes;
+    } catch (error) {
+      return [];
+    } finally {
+      if (browser) await browser.close();
+    }
+  }
 }
 
 export default new AnimeScraper();
